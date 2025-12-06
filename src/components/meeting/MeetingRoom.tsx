@@ -341,7 +341,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
           {phase === "presenting" && (
             <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-3 text-center">
               <p className="text-blue-300 text-sm">
-                💡 Say <span className="font-semibold">"Thank you"</span> when you finish your pitch to start Q&A
+                💡 Say <span className="font-semibold">Thank you</span> when you finish your pitch to start Q&A
               </p>
             </div>
           )}
