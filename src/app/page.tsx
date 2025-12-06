@@ -1,3 +1,5 @@
+// PitchParry - AI Pitch Simulator
+// Sponsor Tracks: Cursor, Anthropic, Groq, ElevenLabs, Convex, CodeRabbit
 import Link from "next/link";
 
 export default function Home() {
