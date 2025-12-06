@@ -2,6 +2,13 @@
 
 import { useState, useCallback, useRef } from "react";
 
+// Extend Window interface for webkit prefix
+declare global {
+  interface Window {
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
+
 interface UseVoiceRecordingOptions {
   onTranscript: (transcript: string) => void;
   language?: string;
@@ -15,15 +22,14 @@ export function useVoiceRecording({ onTranscript, language = "en-US" }: UseVoice
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
 
-    const SpeechRecognition =
-      window.SpeechRecognition || (window as Window & typeof globalThis).webkitSpeechRecognition;
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionAPI) {
       console.error("Speech recognition not supported");
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = language;
@@ -48,9 +54,8 @@ export function useVoiceRecording({ onTranscript, language = "en-US" }: UseVoice
       }
     };
 
-    recognition.onerror = (event) => {
-      const errorMessage = event.error instanceof Error ? event.error.message : "Unknown error";
-      console.error("Speech recognition error:", errorMessage);
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error("Speech recognition error:", event.error);
       setIsListening(false);
     };
 

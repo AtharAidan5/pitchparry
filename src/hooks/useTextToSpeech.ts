@@ -47,7 +47,7 @@ export function useTextToSpeech() {
           resolve();
         };
 
-        audio.onerror = (e) => {
+        audio.onerror = (_e: Event | string) => {
           setIsSpeaking(false);
           URL.revokeObjectURL(audioUrl);
           reject(new Error("Audio playback failed"));
