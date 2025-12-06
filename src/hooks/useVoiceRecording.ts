@@ -16,7 +16,7 @@ export function useVoiceRecording({ onTranscript, language = "en-US" }: UseVoice
     if (typeof window === "undefined") return;
 
     const SpeechRecognition =
-      window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+      window.SpeechRecognition || (window as Window & typeof globalThis).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       console.error("Speech recognition not supported");
@@ -49,7 +49,8 @@ export function useVoiceRecording({ onTranscript, language = "en-US" }: UseVoice
     };
 
     recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
+      const errorMessage = event.error instanceof Error ? event.error.message : "Unknown error";
+      console.error("Speech recognition error:", errorMessage);
       setIsListening(false);
     };
 

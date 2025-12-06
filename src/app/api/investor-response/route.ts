@@ -46,9 +46,17 @@ Your role: Briefly mention a relevant pattern you've seen ("I invested in three 
 Keep your response to 2-3 sentences maximum. Sound wise and experienced.`,
 };
 
+interface InvestorResponseRequest { 
+  investorType: string; 
+  slideContext?: string; 
+  slideWeaknesses?: string[]; 
+  userTranscript: string; 
+  conversationHistory?: string; 
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     const {
       investorType,
@@ -56,7 +64,7 @@ export async function POST(req: NextRequest) {
       slideWeaknesses,
       userTranscript,
       conversationHistory,
-    } = await req.json();
+    } = await req.json() as InvestorResponseRequest;
 
     const systemPrompt =
       INVESTOR_PROMPTS[investorType] || INVESTOR_PROMPTS.skeptic;
@@ -74,9 +82,8 @@ export async function POST(req: NextRequest) {
 
 **What the founder's slide shows:** ${slideContext || "No slide visible currently"}
 
-**Potential weaknesses in their pitch:** ${
-            slideWeaknesses?.join(", ") || "None identified yet"
-          }
+**Potential weaknesses in their pitch:** ${slideWeaknesses?.join(", ") || "None identified yet"
+            }
 
 **What the founder just said:** "${userTranscript}"
 
@@ -97,23 +104,23 @@ Now respond as this investor. Remember:
     });
 
     const question = response.choices[0]?.message?.content || "Could you elaborate on that?";
-    
+
     const duration = Date.now() - startTime;
     console.log(`⚡ Groq response in ${duration}ms`);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       question,
       latency: duration,
-      provider: "groq" 
+      provider: "groq"
     });
   } catch (error: unknown) {
     console.error("Groq investor response error:", error);
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    
+
     // Fallback error response
     return NextResponse.json(
-      { 
+      {
         error: errorMessage,
         provider: "groq"
       },

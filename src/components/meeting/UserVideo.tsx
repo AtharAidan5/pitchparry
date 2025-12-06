@@ -41,16 +41,11 @@ export function UserVideo({ isVideoOff }: UserVideoProps) {
         }
         setHasPermission(true);
         setError(null);
-      } catch (err: any) {
-        console.error("Camera access error:", err);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        console.error("Camera access error:", errorMessage);
         setHasPermission(false);
-        if (err.name === "NotAllowedError") {
-          setError("Camera access denied. Please allow camera permissions.");
-        } else if (err.name === "NotFoundError") {
-          setError("No camera found on this device.");
-        } else {
-          setError("Could not access camera.");
-        }
+        setError(errorMessage);
       }
     }
 

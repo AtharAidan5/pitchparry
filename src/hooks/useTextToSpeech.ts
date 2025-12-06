@@ -59,11 +59,11 @@ export function useTextToSpeech() {
           reject(e);
         });
       });
-    } catch (err: any) {
-      console.error("TTS error:", err);
-      setError(err.message);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      console.error("TTS error:", errorMessage);
+      setError(errorMessage);
       setIsSpeaking(false);
-      // Don't throw - allow the app to continue without voice
     }
   }, []);
 
