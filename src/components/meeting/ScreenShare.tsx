@@ -1,15 +1,21 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Monitor } from "lucide-react";
+import { Monitor, StopCircle } from "lucide-react";
 
 interface ScreenShareProps {
   onFrameCapture: (base64Image: string) => void;
+  onShareStart?: () => void;
+  onShareEnd?: () => void;
+  disabled?: boolean;
   captureIntervalMs?: number;
 }
 
 export function ScreenShare({
   onFrameCapture,
+  onShareStart,
+  onShareEnd,
+  disabled = false,
   captureIntervalMs = 8000,
 }: ScreenShareProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -17,6 +23,8 @@ export function ScreenShare({
   const [isSharing, setIsSharing] = useState(false);
 
   const startSharing = async () => {
+    if (disabled) return;
+    
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "window" },
@@ -28,6 +36,7 @@ export function ScreenShare({
         videoRef.current.srcObject = stream;
       }
       setIsSharing(true);
+      onShareStart?.();
 
       stream.getVideoTracks()[0].onended = () => {
         stopSharing();
@@ -46,6 +55,7 @@ export function ScreenShare({
       videoRef.current.srcObject = null;
     }
     setIsSharing(false);
+    onShareEnd?.();
   };
 
   const captureFrame = useCallback(() => {
@@ -79,26 +89,45 @@ export function ScreenShare({
   }, [isSharing, captureFrame, captureIntervalMs]);
 
   return (
-    <div className="w-full h-full bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden">
+    <div className="w-full h-full bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden relative">
       {isSharing ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-contain"
-        />
+        <>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-contain"
+          />
+          {/* Stop Sharing Button */}
+          <button
+            onClick={stopSharing}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition"
+          >
+            <StopCircle className="w-5 h-5" />
+            Stop Presenting
+          </button>
+        </>
       ) : (
         <div className="text-center">
           <Monitor className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500 mb-6">Click to share your screen</p>
-          <button
-            onClick={startSharing}
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition"
-          >
-            <Monitor className="w-5 h-5" />
-            Share Screen
-          </button>
+          {disabled ? (
+            <>
+              <p className="text-gray-400 mb-2">Presentation ended</p>
+              <p className="text-gray-500 text-sm">Q&A session in progress</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-500 mb-6">Share your screen to start presenting</p>
+              <button
+                onClick={startSharing}
+                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition"
+              >
+                <Monitor className="w-5 h-5" />
+                Share Screen
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
