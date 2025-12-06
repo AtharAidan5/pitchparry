@@ -100,7 +100,7 @@ export function ScreenShare({
         ) : (
           <div className="text-center">
             <Monitor className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-500">Click "Share Screen" to present your pitch</p>
+            <p className="text-gray-500">Click &ldquo;Share Screen&rdquo; to present your pitch</p>
           </div>
         )}
       </div>

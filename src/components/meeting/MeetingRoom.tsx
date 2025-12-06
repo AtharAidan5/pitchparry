@@ -213,7 +213,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
             {/* Interim transcript - what user is saying */}
             {interimTranscript && (
               <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-700">
-                <p className="text-sm text-blue-400 mb-1">You're saying:</p>
+                <p className="text-sm text-blue-400 mb-1">You&apos;re saying:</p>
                 <p className="text-lg">{interimTranscript}</p>
               </div>
             )}
