@@ -178,7 +178,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
   // Handle screen share start
   const handleScreenShareStart = useCallback(() => {
     setPhase("presenting");
-    setStatusMessage("You're presenting. The investors are watching silently.");
+    setStatusMessage("You are presenting. The investors are watching silently.");
   }, []);
 
   // Handle screen share end - triggers Q&A
@@ -293,7 +293,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
             {/* Interim transcript */}
             {interimTranscript && (
               <div className="bg-blue-900/50 border border-blue-700 rounded-lg p-3">
-                <p className="text-sm text-blue-300">You're saying:</p>
+                <p className="text-sm text-blue-300">You are saying:</p>
                 <p className="text-white">{interimTranscript}</p>
               </div>
             )}
