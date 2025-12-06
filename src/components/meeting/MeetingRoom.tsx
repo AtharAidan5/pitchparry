@@ -22,6 +22,19 @@ type SessionPhase = "waiting" | "presenting" | "qa" | "ended";
 
 const INVESTORS = ["skeptic", "numberCruncher", "beenThere"] as const;
 
+// Phrases that indicate the pitch is ending
+const END_PHRASES = [
+  "thank you",
+  "thanks for listening",
+  "that's all",
+  "that concludes",
+  "any questions",
+  "i'm done",
+  "that's it",
+  "end of presentation",
+  "thanks everyone",
+];
+
 export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
   const [phase, setPhase] = useState<SessionPhase>("waiting");
   const [currentInvestorIndex, setCurrentInvestorIndex] = useState(0);
@@ -53,6 +66,12 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       case "beenThere": return "Been-There";
       default: return id;
     }
+  };
+
+  // Check if text contains end phrases
+  const containsEndPhrase = (text: string): boolean => {
+    const lowerText = text.toLowerCase();
+    return END_PHRASES.some((phrase) => lowerText.includes(phrase));
   };
 
   // Ask question from a specific investor
@@ -101,7 +120,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
 
     } catch (err) {
       console.error("Question failed:", err);
-      // Move to next investor on error
       askQuestion(investorIndex + 1);
     } finally {
       setActiveInvestor(null);
@@ -110,52 +128,81 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
   };
 
   // Start Q&A session
-  const startQA = () => {
+  const startQA = useCallback(() => {
     if (qaStartedRef.current) return;
     qaStartedRef.current = true;
-    
+
     setPhase("qa");
     setCurrentInvestorIndex(0);
-    setStatusMessage("Q&A starting... First investor is preparing a question.");
-    
-    // Small delay to let state settle, then ask first question
+    setWaitingForAnswer(false);
+    setStatusMessage("Thank you for your pitch! Q&A is starting...");
+
+    // Add system message
+    sendMessage({
+      sessionId,
+      role: "system",
+      content: "The presenter has concluded their pitch. Q&A session is now starting.",
+      phase: "qa",
+    });
+
+    // Small delay, then first question
     setTimeout(() => {
       askQuestion(0);
-    }, 1000);
-  };
+    }, 2000);
+  }, [sessionId, sendMessage]);
 
-  // Handle user's answer
+  // Handle transcript during presenting OR Q&A
   const handleTranscript = useCallback(
     async (transcript: string) => {
       if (!transcript.trim()) return;
       if (isProcessing || isSpeaking) return;
-      if (phase !== "qa" || !waitingForAnswer) return;
 
-      setWaitingForAnswer(false);
-      setIsProcessing(true);
+      // During PRESENTING phase: check for end phrases
+      if (phase === "presenting") {
+        // Save what they said
+        await sendMessage({
+          sessionId,
+          role: "user",
+          content: transcript,
+          phase: "presenting",
+        });
 
-      await sendMessage({
-        sessionId,
-        role: "user",
-        content: transcript,
-        phase: "qa",
-      });
+        // Check if they're ending the pitch
+        if (containsEndPhrase(transcript)) {
+          setStatusMessage("Detected end of pitch. Starting Q&A...");
+          startQA();
+        }
+        return;
+      }
 
-      setIsProcessing(false);
+      // During Q&A phase: handle answers
+      if (phase === "qa" && waitingForAnswer) {
+        setWaitingForAnswer(false);
+        setIsProcessing(true);
 
-      const nextIndex = currentInvestorIndex + 1;
-      
-      if (nextIndex >= INVESTORS.length) {
-        setPhase("ended");
-        setStatusMessage("Q&A complete! Click End Session for your feedback.");
-      } else {
-        setStatusMessage("Next investor in 3 seconds...");
-        delayTimerRef.current = setTimeout(() => {
-          askQuestion(nextIndex);
-        }, 3000);
+        await sendMessage({
+          sessionId,
+          role: "user",
+          content: transcript,
+          phase: "qa",
+        });
+
+        setIsProcessing(false);
+
+        const nextIndex = currentInvestorIndex + 1;
+
+        if (nextIndex >= INVESTORS.length) {
+          setPhase("ended");
+          setStatusMessage("Q&A complete! Click End Session for your feedback.");
+        } else {
+          setStatusMessage("Next investor in 3 seconds...");
+          delayTimerRef.current = setTimeout(() => {
+            askQuestion(nextIndex);
+          }, 3000);
+        }
       }
     },
-    [isProcessing, isSpeaking, phase, waitingForAnswer, sendMessage, sessionId, currentInvestorIndex]
+    [isProcessing, isSpeaking, phase, waitingForAnswer, sendMessage, sessionId, currentInvestorIndex, startQA]
   );
 
   const { isListening, interimTranscript, startListening, stopListening } =
@@ -176,13 +223,13 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
   const handleScreenShareStart = useCallback(() => {
     setPhase("presenting");
     qaStartedRef.current = false;
-    setStatusMessage("Presenting... Investors are watching silently.");
+    setStatusMessage("Presenting... Unmute to speak. Say 'Thank you' when done.");
   }, []);
 
   const handleScreenShareEnd = useCallback(() => {
-    if (phase === "presenting") {
-      setStatusMessage("Presentation ended. Starting Q&A...");
-      startQA();
+    // Screen share ended but pitch not concluded yet
+    if (phase === "presenting" && !qaStartedRef.current) {
+      setStatusMessage("Screen share stopped. Say 'Thank you' to start Q&A, or share again.");
     }
   }, [phase]);
 
@@ -223,6 +270,13 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
     window.location.href = `/debrief/${sessionId}`;
   };
 
+  // Manual trigger for Q&A (backup button)
+  const handleStartQA = () => {
+    if (phase === "presenting") {
+      startQA();
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
@@ -248,7 +302,18 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400 max-w-md truncate">{statusMessage}</span>
+          <span className="text-sm text-gray-400 max-w-sm truncate">{statusMessage}</span>
+          
+          {/* Manual Start Q&A Button (backup) */}
+          {phase === "presenting" && (
+            <button
+              onClick={handleStartQA}
+              className="bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg text-sm transition"
+            >
+              Start Q&A
+            </button>
+          )}
+          
           <button
             onClick={handleEndSession}
             className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition"
@@ -268,12 +333,21 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
               onFrameCapture={handleFrameCapture}
               onShareStart={handleScreenShareStart}
               onShareEnd={handleScreenShareEnd}
-              disabled={phase === "qa" || phase === "ended"}
+              disabled={phase === "ended"}
             />
           </div>
 
+          {/* Hint for user */}
+          {phase === "presenting" && (
+            <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-3 text-center">
+              <p className="text-blue-300 text-sm">
+                💡 Say <span className="font-semibold">"Thank you"</span> when you finish your pitch to start Q&A
+              </p>
+            </div>
+          )}
+
           {/* Messages */}
-          <div className="h-36 overflow-y-auto space-y-2">
+          <div className="h-32 overflow-y-auto space-y-2">
             {interimTranscript && (
               <div className="bg-blue-900/50 border border-blue-700 rounded-lg p-3">
                 <p className="text-sm text-blue-300">You:</p>
@@ -290,7 +364,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
                       msg.role === "user"
                         ? "bg-gray-800"
                         : msg.role === "system"
-                        ? "bg-gray-700 text-sm"
+                        ? "bg-gray-700 text-sm italic"
                         : "bg-purple-900/50 border border-purple-700"
                     }`}
                   >
