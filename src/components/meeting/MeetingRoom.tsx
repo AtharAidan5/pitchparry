@@ -21,28 +21,23 @@ interface MeetingRoomProps {
 type SessionPhase = "waiting" | "presenting" | "qa" | "ended";
 
 const INVESTORS = ["skeptic", "numberCruncher", "beenThere"] as const;
-type InvestorType = (typeof INVESTORS)[number];
 
 export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
-  // Phase management
   const [phase, setPhase] = useState<SessionPhase>("waiting");
   const [currentInvestorIndex, setCurrentInvestorIndex] = useState(0);
   const [activeInvestor, setActiveInvestor] = useState<string | null>(null);
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
-  const [investorAskedCount, setInvestorAskedCount] = useState<Record<string, number>>({});
-  
-  // Slide context
+  const [hasAskedQuestion, setHasAskedQuestion] = useState(false);
+
   const [currentSlideContext, setCurrentSlideContext] = useState<string>("");
   const [slideWeaknesses, setSlideWeaknesses] = useState<string[]>([]);
   const [allSlideContexts, setAllSlideContexts] = useState<string[]>([]);
-  
-  // UI state
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Share your screen to start presenting");
 
-  // Timer ref for 5-second delay
   const delayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const messages = useQuery(api.messages.list, { sessionId });
@@ -52,7 +47,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
 
   const { speak, isSpeaking } = useTextToSpeech();
 
-  // Get investor display name
   const getInvestorName = (id: string) => {
     switch (id) {
       case "skeptic": return "The Skeptic";
@@ -62,18 +56,18 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
     }
   };
 
-  // Ask question from current investor
+  // Ask ONE question from current investor
   const askInvestorQuestion = useCallback(async () => {
     if (currentInvestorIndex >= INVESTORS.length) {
-      // All investors have asked, end Q&A
-      setStatusMessage("All investors have asked their questions. Click End Session for feedback.");
       setPhase("ended");
+      setStatusMessage("Q&A complete! Click End Session for your feedback.");
       return;
     }
 
     const investor = INVESTORS[currentInvestorIndex];
     setActiveInvestor(investor);
-    setStatusMessage(`${getInvestorName(investor)} is thinking...`);
+    setHasAskedQuestion(false);
+    setStatusMessage(`${getInvestorName(investor)} is preparing a question...`);
     setIsProcessing(true);
 
     try {
@@ -82,15 +76,14 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investorType: investor,
-          slideContext: allSlideContexts.join("\n"),
+          slideContext: allSlideContexts.slice(-3).join("\n"),
           slideWeaknesses: slideWeaknesses,
-          userTranscript: "The presenter just finished their pitch.",
-          conversationHistory:
-            messages?.map((m) => `${m.role}: ${m.content}`).join("\n") || "",
+          userTranscript: "The presenter just finished their pitch presentation.",
+          conversationHistory: messages?.slice(-6).map((m) => `${m.role}: ${m.content}`).join("\n") || "",
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to get response");
+      if (!res.ok) throw new Error("Failed");
 
       const { question } = await res.json();
 
@@ -102,24 +95,33 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       });
 
       setStatusMessage(`${getInvestorName(investor)} is speaking...`);
-
-      // Speak the question
       await speak(question, investor);
 
-      // Now waiting for user's answer
+      setHasAskedQuestion(true);
       setWaitingForAnswer(true);
-      setStatusMessage("Your turn to answer. Click the mic to respond.");
-      
+      setStatusMessage("Your turn! Click the mic to answer.");
+
     } catch (err) {
-      console.error("Investor question failed:", err);
-      setStatusMessage("Error getting question. Moving to next investor...");
-      // Move to next investor on error
-      setCurrentInvestorIndex((prev) => prev + 1);
+      console.error("Question failed:", err);
+      moveToNextInvestor();
     } finally {
       setActiveInvestor(null);
       setIsProcessing(false);
     }
   }, [currentInvestorIndex, allSlideContexts, slideWeaknesses, messages, sendMessage, sessionId, speak]);
+
+  // Move to next investor
+  const moveToNextInvestor = useCallback(() => {
+    const nextIndex = currentInvestorIndex + 1;
+    if (nextIndex >= INVESTORS.length) {
+      setPhase("ended");
+      setStatusMessage("Q&A complete! Click End Session for your feedback.");
+    } else {
+      setCurrentInvestorIndex(nextIndex);
+      setWaitingForAnswer(false);
+      setHasAskedQuestion(false);
+    }
+  }, [currentInvestorIndex]);
 
   // Handle user's answer
   const handleTranscript = useCallback(
@@ -130,7 +132,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       setIsProcessing(true);
       setWaitingForAnswer(false);
 
-      // Save user's answer
       await sendMessage({
         sessionId,
         role: "user",
@@ -139,32 +140,29 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       });
 
       setIsProcessing(false);
+      setStatusMessage("Moving to next investor in 3 seconds...");
 
-      // Move to next investor after 5 second delay
-      setStatusMessage("Next investor will ask in 5 seconds...");
-      
+      // 3 second delay, then next investor
       delayTimerRef.current = setTimeout(() => {
-        setCurrentInvestorIndex((prev) => prev + 1);
-      }, 5000);
+        moveToNextInvestor();
+      }, 3000);
     },
-    [isProcessing, isSpeaking, phase, waitingForAnswer, sendMessage, sessionId]
+    [isProcessing, isSpeaking, phase, waitingForAnswer, sendMessage, sessionId, moveToNextInvestor]
   );
 
-  // Trigger next investor question when index changes
+  // Trigger question when investor changes
   useEffect(() => {
-    if (phase === "qa" && currentInvestorIndex < INVESTORS.length && !waitingForAnswer && !isProcessing && !isSpeaking) {
+    if (phase === "qa" && !waitingForAnswer && !isProcessing && !isSpeaking && !hasAskedQuestion) {
       askInvestorQuestion();
     }
-  }, [currentInvestorIndex, phase, waitingForAnswer, isProcessing, isSpeaking, askInvestorQuestion]);
+  }, [phase, currentInvestorIndex, waitingForAnswer, isProcessing, isSpeaking, hasAskedQuestion, askInvestorQuestion]);
 
   const { isListening, interimTranscript, startListening, stopListening } =
-    useVoiceRecording({
-      onTranscript: handleTranscript,
-    });
+    useVoiceRecording({ onTranscript: handleTranscript });
 
   const toggleMic = useCallback(() => {
     if (isProcessing || isSpeaking) return;
-    if (phase === "qa" && !waitingForAnswer) return; // Can only talk when it's their turn
+    if (phase === "qa" && !waitingForAnswer) return;
 
     if (isMuted) {
       setIsMuted(false);
@@ -175,30 +173,21 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
     }
   }, [isMuted, isProcessing, isSpeaking, phase, waitingForAnswer, startListening, stopListening]);
 
-  // Handle screen share start
   const handleScreenShareStart = useCallback(() => {
     setPhase("presenting");
-    setStatusMessage("You are presenting. The investors are watching silently.");
+    setStatusMessage("Presenting... Investors are watching silently.");
   }, []);
 
-  // Handle screen share end - triggers Q&A
   const handleScreenShareEnd = useCallback(() => {
     if (phase === "presenting") {
       setPhase("qa");
       setCurrentInvestorIndex(0);
-      setStatusMessage("Presentation ended. Q&A session starting...");
-      
-      // Add a system message
-      sendMessage({
-        sessionId,
-        role: "system",
-        content: "Presentation ended. Q&A session is starting.",
-        phase: "qa",
-      });
+      setWaitingForAnswer(false);
+      setHasAskedQuestion(false);
+      setStatusMessage("Presentation ended. Starting Q&A...");
     }
-  }, [phase, sendMessage, sessionId]);
+  }, [phase]);
 
-  // Handle frame capture during presentation
   const handleFrameCapture = useCallback(
     async (base64Image: string) => {
       if (phase !== "presenting") return;
@@ -210,7 +199,7 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
           body: JSON.stringify({ base64Image }),
         });
 
-        if (!res.ok) throw new Error("Analysis failed");
+        if (!res.ok) return;
 
         const data = await res.json();
         setCurrentSlideContext(data.slideAnalysis || "");
@@ -230,22 +219,16 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
     [phase, sessionId, saveSlideAnalysis]
   );
 
-  // End session
   const handleEndSession = async () => {
-    if (delayTimerRef.current) {
-      clearTimeout(delayTimerRef.current);
-    }
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     stopListening();
     await updatePhase({ sessionId, phase: "debrief" });
     window.location.href = `/debrief/${sessionId}`;
   };
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (delayTimerRef.current) {
-        clearTimeout(delayTimerRef.current);
-      }
+      if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     };
   }, []);
 
@@ -255,15 +238,20 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-semibold">PitchParry</h1>
-          <span className="text-sm px-2 py-1 rounded bg-gray-800 text-gray-300">
+          <span className={`text-sm px-2 py-1 rounded ${
+            phase === "presenting" ? "bg-red-900 text-red-300" :
+            phase === "qa" ? "bg-purple-900 text-purple-300" :
+            phase === "ended" ? "bg-green-900 text-green-300" :
+            "bg-gray-800 text-gray-300"
+          }`}>
             {phase === "waiting" && "Ready"}
             {phase === "presenting" && "🔴 Presenting"}
-            {phase === "qa" && "💬 Q&A"}
+            {phase === "qa" && `💬 Q&A (${currentInvestorIndex + 1}/3)`}
             {phase === "ended" && "✅ Complete"}
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400">{statusMessage}</span>
+          <span className="text-sm text-gray-400 max-w-md truncate">{statusMessage}</span>
           <button
             onClick={handleEndSession}
             className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition"
@@ -278,7 +266,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Screen Share + Messages */}
         <div className="flex-1 flex flex-col p-4 gap-4">
-          {/* Screen Share */}
           <div className="flex-1 min-h-0">
             <ScreenShare
               onFrameCapture={handleFrameCapture}
@@ -288,17 +275,15 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
             />
           </div>
 
-          {/* Messages Area */}
+          {/* Messages */}
           <div className="h-36 overflow-y-auto space-y-2">
-            {/* Interim transcript */}
             {interimTranscript && (
               <div className="bg-blue-900/50 border border-blue-700 rounded-lg p-3">
-                <p className="text-sm text-blue-300">You are saying:</p>
+                <p className="text-sm text-blue-300">You:</p>
                 <p className="text-white">{interimTranscript}</p>
               </div>
             )}
 
-            {/* Show last 3 messages */}
             {messages && messages.length > 0 && !interimTranscript && (
               <div className="space-y-2">
                 {messages.slice(-3).map((msg, i) => (
@@ -308,21 +293,16 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
                       msg.role === "user"
                         ? "bg-gray-800"
                         : msg.role === "system"
-                        ? "bg-gray-700 text-gray-300 text-sm"
+                        ? "bg-gray-700 text-sm"
                         : "bg-purple-900/50 border border-purple-700"
                     }`}
                   >
-                    {msg.role !== "system" && (
-                      <p className="text-sm text-gray-400 mb-1">
-                        {msg.role === "user"
-                          ? "You"
-                          : msg.role === "skeptic"
-                          ? "🤨 The Skeptic"
-                          : msg.role === "numberCruncher"
-                          ? "🧮 Number Cruncher"
-                          : "👴 Been-There"}
-                      </p>
-                    )}
+                    <p className="text-sm text-gray-400 mb-1">
+                      {msg.role === "user" ? "You" :
+                       msg.role === "skeptic" ? "🤨 The Skeptic" :
+                       msg.role === "numberCruncher" ? "🧮 Number Cruncher" :
+                       msg.role === "beenThere" ? "👴 Been-There" : "System"}
+                    </p>
                     <p className="text-white">{msg.content}</p>
                   </div>
                 ))}
@@ -344,7 +324,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
 
       {/* Bottom Controls */}
       <div className="flex justify-center items-center gap-4 py-4 border-t border-gray-800 bg-gray-900">
-        {/* Mic Button */}
         <button
           onClick={toggleMic}
           disabled={isProcessing || isSpeaking || (phase === "qa" && !waitingForAnswer)}
@@ -355,12 +334,10 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
               ? "bg-red-600 hover:bg-red-700"
               : "bg-green-600 hover:bg-green-700 ring-2 ring-green-400"
           }`}
-          title={phase === "qa" && !waitingForAnswer ? "Wait for your turn" : isMuted ? "Unmute" : "Mute"}
         >
           {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </button>
 
-        {/* Video Button */}
         <button
           onClick={() => setIsVideoOff(!isVideoOff)}
           className={`p-4 rounded-full transition ${
@@ -370,7 +347,6 @@ export function MeetingRoom({ sessionId, session }: MeetingRoomProps) {
           {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
         </button>
 
-        {/* End Call */}
         <button
           onClick={handleEndSession}
           className="p-4 rounded-full bg-red-600 hover:bg-red-700 transition"
