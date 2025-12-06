@@ -106,13 +106,15 @@ Now respond as this investor. Remember:
       latency: duration,
       provider: "groq" 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Groq investor response error:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     
     // Fallback error response
     return NextResponse.json(
       { 
-        error: error.message || "Response failed",
+        error: errorMessage,
         provider: "groq"
       },
       { status: 500 }

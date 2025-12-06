@@ -3,21 +3,21 @@
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export default function NewSession() {
   const createSession = useMutation(api.pitchSessions.create);
   const router = useRouter();
-  const [isCreating, setIsCreating] = useState(false);
+  const hasCreated = useRef(false);
 
   useEffect(() => {
-    if (!isCreating) {
-      setIsCreating(true);
-      createSession().then((sessionId) => {
-        router.push(`/session/${sessionId}`);
-      });
-    }
-  }, [createSession, router, isCreating]);
+    if (hasCreated.current) return;
+    hasCreated.current = true;
+    
+    createSession().then((sessionId) => {
+      router.push(`/session/${sessionId}`);
+    });
+  }, [createSession, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

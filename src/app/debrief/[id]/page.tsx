@@ -4,8 +4,35 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+
+interface Feedback {
+  overallScore: number;
+  topImprovements: string[];
+  deliveryFeedback: DeliveryFeedback;
+  contentFeedback: ContentFeedback;
+  presentationFeedback: PresentationFeedback;
+}
+
+interface DeliveryFeedback {
+  voiceTone: string;
+  pacing: string;
+  confidence: number;
+  fillerWords: string[];
+}
+
+interface ContentFeedback {
+  clarity: number;
+  marketSizing: string;
+  competitiveAnalysis: string;
+}
+
+interface PresentationFeedback {
+  structure: string;
+  storytelling: number;
+  slideUsage: string;
+}
 
 export default function DebriefPage() {
   const params = useParams();
@@ -15,12 +42,14 @@ export default function DebriefPage() {
   const messages = useQuery(api.messages.list, { sessionId });
   const saveFeedback = useMutation(api.pitchSessions.saveFeedback);
 
-  const [feedback, setFeedback] = useState<any>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const hasStartedGenerating = useRef(false);
 
   // Generate feedback when page loads
   useEffect(() => {
-    if (session && messages && messages.length > 0 && !feedback && !isGenerating) {
+    if (session && messages && messages.length > 0 && !hasStartedGenerating.current) {
+      hasStartedGenerating.current = true;
       generateFeedback();
     }
   }, [session, messages]);
@@ -73,7 +102,7 @@ export default function DebriefPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">Pitch Debrief</h1>
-          <p className="text-gray-400">Here's how you did</p>
+          <p className="text-gray-400">{"Here's how you did"}</p>
         </div>
 
         {isGenerating ? (

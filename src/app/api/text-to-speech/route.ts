@@ -68,10 +68,11 @@ export async function POST(req: NextRequest) {
         "Content-Length": audioBuffer.byteLength.toString(),
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("TTS error:", error);
     return NextResponse.json(
-      { error: error.message || "TTS failed" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
